@@ -9,7 +9,15 @@ from torch import nn
 from tkinter import _flatten
 from collections import Counter
 class BinaryRecommendEnv(object):
-    def __init__(self, kg, dataset, data_name, embed, seed=1, max_turn=15, cand_num=10, cand_item_num=10, attr_num=20, mode='train', ask_num=1, entropy_way='weight entropy', fm_epoch=0):
+    def __init__(self, kg, dataset, data_name, embed: str, seed=1, max_turn=15, cand_num=10, cand_item_num=10, attr_num=20, mode='train', ask_num=1, entropy_way='weight entropy', fm_epoch=0):
+        '''
+        :param kg: knowledge graph
+        :param dataset: dataset name
+        :param data_name: data name
+        :param embed: embedding method, 'transe'
+        :param seed: random seed
+        :param fm_epoch: fm epoch, unused
+        '''
         self.data_name = data_name
         self.mode = mode
         self.seed = seed
@@ -36,7 +44,7 @@ class BinaryRecommendEnv(object):
             self.random_sample_item = True
         else:
             self.cand_item_num = cand_item_num
-        #  entropy  or weight entropy
+        #  entropy  or weight entropy, what is weight entropy
         self.ent_way = entropy_way
 
         # user's profile
@@ -57,6 +65,7 @@ class BinaryRecommendEnv(object):
         self.conver_his = []    #conversation_history
         self.attr_ent = []  # attribute entropy
 
+        # user item interaction dict, for validation or test
         self.ui_dict = self.__load_rl_data__(data_name, mode=mode)  # np.array [ u i weight]
         self.user_weight_dict = dict()
         self.user_items_dict = dict()
@@ -115,6 +124,9 @@ class BinaryRecommendEnv(object):
 
 
     def __user_dict_init__(self):   #Calculate the weight of the number of interactions per user
+        '''
+        the number of interactions per user devided by the number of all items
+        '''
         ui_nums = 0
         for items in self.ui_dict.values():
             ui_nums += len(items)
@@ -124,6 +136,9 @@ class BinaryRecommendEnv(object):
         print('user_dict init successfully!')
 
     def __test_tuple_generate__(self):
+        '''
+        generate test tuple (user_id, item_id) from self.ui_dict as self.ui_array (shuffled)
+        '''
         ui_list = []
         for user_str, items in self.ui_dict.items():
             user_id = int(user_str)

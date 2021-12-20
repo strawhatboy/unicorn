@@ -42,6 +42,7 @@ def main():
     print('Save', args.data_name, 'graph successfully!')
 
 
+# never used?
 def construct(kg):
     users = kg.G['user'].keys()
     items = kg.G['item'].keys()

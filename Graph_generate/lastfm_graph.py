@@ -12,7 +12,9 @@ class LastFmGraph(object):
         num_nodes = 0
         data_relations, _, _ = dataset.get_relation()  # entity_relations, relation_name, link_entity_type
         entity_list = list(data_relations.keys())
+
         for entity in entity_list:
+        # user, item, feature
             self.G[entity] = {}
             entity_size = getattr(dataset, entity).value_len
             for eid in range(entity_size):
@@ -26,8 +28,10 @@ class LastFmGraph(object):
     def _load_knowledge(self, dataset):
         _, data_relations_name, link_entity_type = dataset.get_relation()  # entity_relations, relation_name, link_entity_type
         for relation in data_relations_name:
+        # relation: ['interact', 'friends', 'like', 'belong_to']
             print('Load knowledge {}...'.format(relation))
             data = getattr(dataset, relation).data
+            # data[head_id] = [tail_id1, tail_id2, ...]
             num_edges = 0
             for he_id, te_ids in enumerate(data):  # head_entity_id , tail_entity_ids
                 if len(te_ids) <= 0:
@@ -35,6 +39,7 @@ class LastFmGraph(object):
                 e_head_type = link_entity_type[relation][0]
                 e_tail_type = link_entity_type[relation][1]
                 for te_id in set(te_ids):
+                    # e.g. 'user', uid, 'interact', 'item', iid
                     self._add_edge(e_head_type, he_id, relation, e_tail_type, te_id)
                     num_edges += 2
             print('Total {:d} {:s} edges.'.format(num_edges, relation))
