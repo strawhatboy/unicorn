@@ -153,6 +153,7 @@ class BinaryRecommendEnv(object):
     def reset(self, embed=None):
         '''
         somehow equivalent to __init__
+        reset with embedding
         '''
         if embed is not None:
             self.ui_embeds = embed[:self.user_length+self.item_length]

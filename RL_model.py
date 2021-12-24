@@ -150,14 +150,20 @@ class Agent(object):
         self.EPS_DECAY = EPS_DECAY
         self.steps_done = 0
         self.device = device
+
+        # Graph Encoder
         self.gcn_net = gcn_net
         self.policy_net = DQN(state_size, action_size, hidden_size).to(device)
         self.target_net = DQN(state_size, action_size, hidden_size).to(device)
+
+        # the same parameters with policy_net
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
         self.optimizer = optim.Adam(chain(self.policy_net.parameters(),self.gcn_net.parameters()), lr=learning_rate, weight_decay = l2_norm)
         self.memory = memory
         self.loss_func = nn.MSELoss()
+
+        # what is PADDING_ID?
         self.PADDING_ID = PADDING_ID
         self.tau = tau
 
@@ -260,6 +266,8 @@ def train(args, kg, dataset, filename):
                        attr_num=args.attr_num, mode='train', ask_num=args.ask_num, entropy_way=args.entropy_method, fm_epoch=args.fm_epoch)
     set_random_seed(args.seed)
     memory = ReplayMemoryPER(args.memory_size) #50000
+
+    # ui_embeds and feature_emb has the same size (shape[1])
     embed = torch.FloatTensor(np.concatenate((env.ui_embeds, env.feature_emb, np.zeros((1,env.ui_embeds.shape[1]))), axis=0))
     gcn_net = GraphEncoder(device=args.device, entity=embed.size(0), emb_size=embed.size(1), kg=kg, embeddings=embed, \
         fix_emb=args.fix_emb, seq=args.seq, gcn=args.gcn, hidden_size=args.hidden).to(args.device)
@@ -283,7 +291,10 @@ def train(args, kg, dataset, filename):
         SR15_mean = dqn_evaluate(args, kg, dataset, agent, filename, 0)
         test_performance.append(SR15_mean)
     for train_step in range(1, args.max_steps+1):
+        # what is SR5, SR10, SR15, AvgT (Avg Time?)
         SR5, SR10, SR15, AvgT, Rank, total_reward = 0., 0., 0., 0., 0., 0.
+
+        # directly initialized the loss on GPU
         loss = torch.tensor(0, dtype=torch.float, device=args.device)
         for i_episode in tqdm(range(args.sample_times),desc='sampling'):
             #blockPrint()
@@ -295,6 +306,8 @@ def train(args, kg, dataset, filename):
             #state = torch.unsqueeze(torch.FloatTensor(state), 0).to(args.device)
             epi_reward = 0
             is_last_turn = False
+
+            # count() auto increment
             for t in count():   # user  dialog
                 if t == 14:
                     is_last_turn = True

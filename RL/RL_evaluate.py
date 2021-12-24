@@ -17,6 +17,7 @@ EnvDict = {
     }
 
 def dqn_evaluate(args, kg, dataset, agent, filename, i_episode):
+    # create a new environment for evaluation
     test_env = EnvDict[args.data_name](kg, dataset, args.data_name, args.embed, seed=args.seed, max_turn=args.max_turn,
                                        cand_num=args.cand_num, cand_item_num=args.cand_item_num, attr_num=args.attr_num, mode='test', ask_num=args.ask_num, entropy_way=args.entropy_method,
                                        fm_epoch=args.fm_epoch)

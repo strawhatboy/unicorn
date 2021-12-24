@@ -11,6 +11,10 @@ from tkinter import _flatten
 from collections import Counter
 class EnumeratedRecommendEnv(object):
     def __init__(self, kg, dataset, data_name, embed, seed=1, max_turn=15, cand_num=10, cand_item_num=10, attr_num=20, mode='train', ask_num=1, entropy_way='weight entropy', fm_epoch=0):
+        '''
+        small_feature: separate the feature into small feature and large feature
+        large_feature: in YELP dataset
+        '''
         self.data_name = data_name
         self.mode = mode
         self.seed = seed
