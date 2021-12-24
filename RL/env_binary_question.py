@@ -88,12 +88,14 @@ class BinaryRecommendEnv(object):
             self.ui_embeds =embeds['ui_emb']
             self.feature_emb = embeds['feature_emb']
         else:
+            # learn embedding?
             self.ui_embeds = nn.Embedding(self.user_length+self.item_length, 64).weight.data.numpy()
             self.feature_emb = nn.Embedding(self.feature_length, 64).weight.data.numpy()
         # self.feature_length = self.feature_emb.shape[0]-1
 
         self.action_space = 2
 
+        # handcrafted reward, is there anyway to learn it?
         self.reward_dict = {
             'ask_suc': 0.01,
             'ask_fail': -0.1,
@@ -111,6 +113,7 @@ class BinaryRecommendEnv(object):
         }
         self.attr_count_dict = dict()   # This dict is used to calculate entropy
 
+    # data for validation and test
     def __load_rl_data__(self, data_name, mode):
         if mode == 'train':
             with open(os.path.join(DATA_DIR[data_name], 'UI_Interaction_data/review_dict_valid.json'), encoding='utf-8') as f:
@@ -148,28 +151,43 @@ class BinaryRecommendEnv(object):
         np.random.shuffle(self.ui_array)
 
     def reset(self, embed=None):
+        '''
+        somehow equivalent to __init__
+        '''
         if embed is not None:
             self.ui_embeds = embed[:self.user_length+self.item_length]
             self.feature_emb = embed[self.user_length+self.item_length:]
         #init  user_id  item_id  cur_step   cur_node_set
         self.cur_conver_step = 0   #reset cur_conversation step
+
+        # what is the meaning of cur_node_set?
         self.cur_node_set = []
         if self.mode == 'train':
+            # randomly sample users and interacted items
             users = list(self.user_weight_dict.keys())
             # self.user_id = np.random.choice(users, p=list(self.user_weight_dict.values())) # select user  according to user weights
             self.user_id = np.random.choice(users)
             self.target_item = np.random.choice(self.ui_dict[str(self.user_id)])
         elif self.mode == 'test':
+            # set user_id and target_item to column 0 and 1 of self.ui_array at row self.test_num
             self.user_id = self.ui_array[self.test_num, 0]
             self.target_item = self.ui_array[self.test_num, 1]
             self.test_num += 1
 
-        # init user's profile
+        # init user's profile,
         print('-----------reset state vector------------')
         print('user_id:{}, target_item:{}'.format(self.user_id, self.target_item))
+
+        # P_{cand} ?
         self.reachable_feature = []  # user reachable feature in cur_step
+
+        # P_u
         self.user_acc_feature = []  # user accepted feature which asked by agent
+
+        # P_{rej}
         self.user_rej_feature = []  # user rejected feature which asked by agent
+
+        # V_{cand}
         self.cand_items = list(range(self.item_length))
 
         # init state vector
@@ -178,21 +196,32 @@ class BinaryRecommendEnv(object):
         self.attr_ent = [0] * self.attr_state_num  # attribute entropy
 
         # initialize dialog by randomly asked a question from ui interaction
+        # an random attribute of the target item?
         user_like_random_fea = random.choice(self.kg.G['item'][self.target_item]['belong_to'])
         self.user_acc_feature.append(user_like_random_fea) #update user acc_fea
         self.cur_node_set.append(user_like_random_fea)
+
+        # by default regard the first random attribute as accepted
+        # cand_score updated inside
         self._update_cand_items(user_like_random_fea, acc_rej=True)
         self._updata_reachable_feature()  # self.reachable_feature = []
+
+        # conversation history, update the reward
         self.conver_his[self.cur_conver_step] = self.history_dict['ask_suc']
+        # ? rewards stored in conver_his ?
         self.cur_conver_step += 1
 
         print('=== init user prefer feature: {}'.format(self.cur_node_set))
         self._update_feature_entropy()  #update entropy
+
+        # reachable_feature resetted when self._update_reachable_feature()
         print('reset_reachable_feature num: {}'.format(len(self.reachable_feature)))
 
         # Sort reachable features according to the entropy of features
         reach_fea_score = self._feature_score()
         max_ind_list = []
+
+        # get max cand_num reach_fea_score 's index
         for k in range(self.cand_num):
             max_score = max(reach_fea_score)
             max_ind = reach_fea_score.index(max_score)
@@ -202,6 +231,8 @@ class BinaryRecommendEnv(object):
             max_ind_list.append(max_ind)
         
         max_fea_id = [self.reachable_feature[i] for i in max_ind_list]
+
+        # move top score feature to head # append to head of reachable_feature according to feature score descending
         [self.reachable_feature.remove(v) for v in max_fea_id]
         [self.reachable_feature.insert(0, v) for v in max_fea_id[::-1]]
 
@@ -328,13 +359,18 @@ class BinaryRecommendEnv(object):
 
 
     def _updata_reachable_feature(self):
+        # reachable feature is candidate feature? no, also includes user rejected feature and already accepted feature
         next_reachable_feature = []
         reachable_item_feature_pair = {}
         for cand in self.cand_items:
+            # the candidate item's features
+            # all candidates' features should be included in reachable_feature
             fea_belong_items = list(self.kg.G['item'][cand]['belong_to']) # A-I
             next_reachable_feature.extend(fea_belong_items)
             reachable_item_feature_pair[cand] = list(set(fea_belong_items) - set(self.user_rej_feature))
             next_reachable_feature = list(set(next_reachable_feature))
+
+        # self.reachable_feature is the candidate feature!
         self.reachable_feature = list(set(next_reachable_feature) - set(self.user_acc_feature) - set(self.user_rej_feature))
         self.item_feature_pair = reachable_item_feature_pair
 
@@ -359,11 +395,18 @@ class BinaryRecommendEnv(object):
 
 
     def _item_score(self):
+        '''
+        w_v^{(t)} = \sigmoid(e_u^{T} * e_v + \sigma_{p \in P_u^{(t)}} e_v^{T} * e_p - \sigma_{p \in P_{rej}^{(t)} \interact P_v^{(t)} } e_v^{T} * e_p)
+        '''
         cand_item_score = []
+        # can this part be optimized with matrix operation?
         for item_id in self.cand_items:
+            # self.user_length is some kind of offset here
             item_embed = self.ui_embeds[self.user_length + item_id]
             score = 0
+            # why not put them all on GPU ?
             score += np.inner(np.array(self.user_embed), item_embed)
+            # self.user_acc_feature is random selected when resetting the env
             prefer_embed = self.feature_emb[self.user_acc_feature, :]  #np.array (x*64)
             unprefer_feature = list(set(self.user_rej_feature) & set(self.kg.G['item'][item_id]['belong_to']))
             unprefer_embed = self.feature_emb[unprefer_feature, :]  #np.array (x*64)
@@ -373,7 +416,7 @@ class BinaryRecommendEnv(object):
                 score -= self.sigmoid([np.inner(unprefer_embed[i], item_embed)])[0]
                 #score -= np.inner(unprefer_embed[i], item_embed)
             cand_item_score.append(score)
-        return cand_item_score
+        return cand_item_score 
 
 
     def _ask_update(self, asked_feature):
@@ -405,7 +448,10 @@ class BinaryRecommendEnv(object):
     def _update_cand_items(self, asked_feature, acc_rej):
         if acc_rej:    # accept feature
             print('=== ask acc: update cand_items')
+            # feature.belong_to is list of all the items that belong to this feature
             feature_items = self.kg.G['feature'][asked_feature]['belong_to']
+
+            # cand_items expanded
             self.cand_items = set(self.cand_items) & set(feature_items)   #  itersection
             self.cand_items = list(self.cand_items)
         
@@ -413,8 +459,11 @@ class BinaryRecommendEnv(object):
             print('=== ask rej: update cand_items')
         
         #select topk candidate items to recommend
+        # item_score updated here !
         cand_item_score = self._item_score()
         item_score_tuple = list(zip(self.cand_items, cand_item_score))
+
+        # sorted by score in descending order
         sort_tuple = sorted(item_score_tuple, key=lambda x: x[1], reverse=True)
         self.cand_items, self.cand_item_score = zip(*sort_tuple)
     
@@ -453,8 +502,15 @@ class BinaryRecommendEnv(object):
             for item_id in self.cand_items:
                 cand_items_fea_list.append(list(self.kg.G['item'][item_id]['belong_to']))
             cand_items_fea_list = list(_flatten(cand_items_fea_list))
+
+            # Counter
             self.attr_count_dict = dict(Counter(cand_items_fea_list))
+
+            # attribute entropy
             self.attr_ent = [0] * self.attr_state_num  # reset attr_ent
+
+            # reachable_feature is increasing, but real_ask_able only consider the features 
+            # related to self.cand_items
             real_ask_able = list(set(self.reachable_feature) & set(self.attr_count_dict.keys()))
             for fea_id in real_ask_able:
                 p1 = float(self.attr_count_dict[fea_id]) / len(self.cand_items)
@@ -469,19 +525,29 @@ class BinaryRecommendEnv(object):
             self.attr_count_dict = {}
             #cand_item_score = self._item_score()
             cand_item_score_sig = self.sigmoid(self.cand_item_score)  # sigmoid(score)
+
+            # score_ind is index
             for score_ind, item_id in enumerate(self.cand_items):
+                # there is no flatten operation here, feature list for each candidate item
                 cand_items_fea_list = list(self.kg.G['item'][item_id]['belong_to'])
                 for fea_id in cand_items_fea_list:
+
+                    # append to attr_count_dict
+                    # ??? use Counter here ???
+                    # the same operation as in 'entropy' !!!
                     if self.attr_count_dict.get(fea_id) == None:
                         self.attr_count_dict[fea_id] = 0
                     self.attr_count_dict[fea_id] += cand_item_score_sig[score_ind]
 
             self.attr_ent = [0] * self.attr_state_num  # reset attr_ent
             real_ask_able = list(set(self.reachable_feature) & set(self.attr_count_dict.keys()))
+
+
+            # difference is here, the weight is not the same as in 'entropy'
             sum_score_sig = sum(cand_item_score_sig)
 
             for fea_id in real_ask_able:
-                p1 = float(self.attr_count_dict[fea_id]) / sum_score_sig
+                p1 = float(self.attr_count_dict[fea_id]) / sum_score_sig    # score_sig is sigmoid(score)
                 p2 = 1.0 - p1
                 if p1 == 1 or p1 <= 0:
                     self.attr_ent[fea_id] = 0
