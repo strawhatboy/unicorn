@@ -1,5 +1,6 @@
 
 import json
+from typing import List
 import numpy as np
 import os
 import random
@@ -57,6 +58,7 @@ class BinaryRecommendEnv(object):
 
         #user_id  item_id   cur_step   cur_node_set
         self.user_id = None
+        # target_item is the label !!!
         self.target_item = None
         self.cur_conver_step = 0        #  the number of conversation in current step
         self.cur_node_set = []     # maybe a node or a node set  /   normally save feature node
@@ -237,6 +239,7 @@ class BinaryRecommendEnv(object):
         [self.reachable_feature.remove(v) for v in max_fea_id]
         [self.reachable_feature.insert(0, v) for v in max_fea_id[::-1]]
 
+        # return the 
         return self._get_state(), self._get_cand(), self._get_action_space()
 
     def _get_cand(self):
@@ -251,7 +254,11 @@ class BinaryRecommendEnv(object):
         cand = cand_feature + cand_item
         return cand
     
-    def _get_action_space(self):
+    def _get_action_space(self) -> List[List]:
+        '''
+        return list 0: list of embedding id of reachable_feature
+        return list 1: list of embedding id of candidates
+        '''
         action_space = [self._map_to_all_id(self.reachable_feature,'feature'), self._map_to_all_id(self.cand_items,'item')]
         return action_space
 
@@ -313,6 +320,7 @@ class BinaryRecommendEnv(object):
             self.conver_his[self.cur_conver_step-1] = self.history_dict['until_T']
             print('--> Maximum number of turns reached !')
             done = 1
+        # action is the index in ui_embeds ?.
         elif action >= self.user_length + self.item_length:   #ask feature
             asked_feature = self._map_to_old_id(action)
             print('-->action: ask features {}, max entropy feature {}'.format(asked_feature, self.reachable_feature[:self.cand_num]))

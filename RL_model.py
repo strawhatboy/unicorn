@@ -132,6 +132,8 @@ class DQN(nn.Module):
         # Q(s,a)
         if choose_action:
             x = x.repeat(1, y.size(1), 1)
+        
+        # can state and action on embedding dimension
         state_cat_action = torch.cat((x,y),dim=2)
         advantage = self.out_advantage(F.relu(self.fc2_advantage(state_cat_action))).squeeze(dim=2) #[N*K]
 
@@ -153,6 +155,7 @@ class Agent(object):
 
         # Graph Encoder
         self.gcn_net = gcn_net
+        # action_size is the embeding size ! 64 in LastFM
         self.policy_net = DQN(state_size, action_size, hidden_size).to(device)
         self.target_net = DQN(state_size, action_size, hidden_size).to(device)
 
@@ -170,6 +173,7 @@ class Agent(object):
 
     def select_action(self, state, cand, action_space, is_test=False, is_last_turn=False):
         state_emb = self.gcn_net([state])
+        # emmmmmmm, [cand], why?
         cand = torch.LongTensor([cand]).to(self.device)
         cand_emb = self.gcn_net.embedding(cand)
         sample = random.random()
@@ -177,11 +181,21 @@ class Agent(object):
                         math.exp(-1. * self.steps_done / self.EPS_DECAY)
         self.steps_done += 1
         if is_test or sample > eps_threshold:
+            # action_space[1] is the embedding index of candidate items
             if is_test and (len(action_space[1]) <= 10 or is_last_turn):
+                # return the top candidate item
                 return torch.tensor(action_space[1][0], device=self.device, dtype=torch.long), action_space[1]
             with torch.no_grad():
+                # state_emb: [1*1*hidden_size]
+                # cand_emb: [1*20*hidden_size] ? 20 is the number of candidate items
+                # including the cand_feature & cand_item
                 actions_value = self.policy_net(state_emb, cand_emb)
+                # what is cand[0] ?????? it's cand, because [cand] was used...
                 print(sorted(list(zip(cand[0].tolist(), actions_value[0].tolist())), key=lambda x: x[1], reverse=True))
+
+                # actions_value is the action score, [1*20], calculated with learned parameters of policy_net
+                # action is the selected item or feature.
+                # 合理起来了
                 action = cand[0][actions_value.argmax().item()]
                 sorted_actions = cand[0][actions_value.sort(1, True)[1].tolist()]
                 return action, sorted_actions.tolist()
@@ -271,6 +285,7 @@ def train(args, kg, dataset, filename):
     embed = torch.FloatTensor(np.concatenate((env.ui_embeds, env.feature_emb, np.zeros((1,env.ui_embeds.shape[1]))), axis=0))
     gcn_net = GraphEncoder(device=args.device, entity=embed.size(0), emb_size=embed.size(1), kg=kg, embeddings=embed, \
         fix_emb=args.fix_emb, seq=args.seq, gcn=args.gcn, hidden_size=args.hidden).to(args.device)
+    # action_size is the embedding size!
     agent = Agent(device=args.device, memory=memory, state_size=args.hidden, action_size=embed.size(1), \
         hidden_size=args.hidden, gcn_net=gcn_net, learning_rate=args.learning_rate, l2_norm=args.l2_norm, PADDING_ID=embed.size(0)-1)
     # self.reward_dict = {
@@ -300,6 +315,8 @@ def train(args, kg, dataset, filename):
             #blockPrint()
             print('\n================new tuple:{}===================='.format(i_episode))
             if not args.fix_emb:
+                # action_space is list[2], [0] is the embedding index of reachable_feature, [1] is that of the candidate item
+                # cand is list of cand_feature and cand_item embeddings index (so called id)
                 state, cand, action_space = env.reset(agent.gcn_net.embedding.weight.data.cpu().detach().numpy())  # Reset environment and record the starting state
             else:
                 state, cand, action_space = env.reset() 
@@ -349,6 +366,8 @@ def train(args, kg, dataset, filename):
                     break
         enablePrint() # Enable print function
         print('loss : {} in epoch_uesr {}'.format(loss.item()/args.sample_times, args.sample_times))
+
+        # SR5: recommend successfully in 5 turns/ successful recommendation in 5 turns.
         print('SR5:{}, SR10:{}, SR15:{}, AvgT:{}, Rank:{}, rewards:{} '
                   'Total epoch_uesr:{}'.format(SR5 / args.sample_times, SR10 / args.sample_times, SR15 / args.sample_times,
                                                 AvgT / args.sample_times, Rank / args.sample_times, total_reward / args.sample_times, args.sample_times))
