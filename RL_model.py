@@ -161,6 +161,8 @@ class Agent(object):
 
         # the same parameters with policy_net
         self.target_net.load_state_dict(self.policy_net.state_dict())
+
+        # only eval for target_net, parameters wont update during training. (FIXED)
         self.target_net.eval()
         self.optimizer = optim.Adam(chain(self.policy_net.parameters(),self.gcn_net.parameters()), lr=learning_rate, weight_decay = l2_norm)
         self.memory = memory
@@ -206,6 +208,7 @@ class Agent(object):
     
     def update_target_model(self):
         #soft assign
+        # assign policy_net parameters to target_net, "softly"
         for target_param, param in zip(self.target_net.parameters(), self.policy_net.parameters()):
             target_param.data.copy_(self.tau * param.data + target_param.data * (1.0 - self.tau))
 
@@ -213,6 +216,7 @@ class Agent(object):
         if len(self.memory) < BATCH_SIZE:
             return
         
+        # after this, target_net is somehow "close" to policy_net.
         self.update_target_model()
         
         idxs, transitions, is_weights = self.memory.sample(BATCH_SIZE)
@@ -240,6 +244,8 @@ class Agent(object):
         best_actions = torch.gather(input=next_cand_batch, dim=1, index=self.policy_net(next_state_emb_batch, next_cand_emb_batch).argmax(dim=1).view(len(n_states),1).to(self.device))
         best_actions_emb = self.gcn_net.embedding(best_actions)
         q_target = torch.zeros((BATCH_SIZE,1), device=self.device)
+
+        # detached !, target_net wont update its parameters.
         q_target[non_final_mask] = self.target_net(next_state_emb_batch,best_actions_emb,choose_action=False).detach()
         q_target = reward_batch + GAMMA * q_target
 
@@ -248,6 +254,7 @@ class Agent(object):
         self.memory.update(idxs, errors)
 
         # mean squared error loss to minimize
+        # update policy_net only, q_target was detached.
         loss = (torch.FloatTensor(is_weights).to(self.device) * self.loss_func(q_eval, q_target)).mean()
         self.optimizer.zero_grad()
         loss.backward()

@@ -59,6 +59,7 @@ def evaluate(args, kg, dataset, filename):
     tt = time.time()
     start = tt
 
+    # success rate
     SR5, SR10, SR15, AvgT, Rank = 0, 0, 0, 0, 0
     SR_turn_15 = [0]* args.max_turn
     turn_result = []
